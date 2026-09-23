@@ -1260,3 +1260,10 @@ https://ourworldindata.org/ (Accessed: 20 September 2026).
 Stekhoven, D.J. and Bühlmann, P. (2012) ‘MissForest: non-parametric missing value 
 imputation for mixed-type data’, Bioinformatics, 28(1), pp. 112–118. Available at:
 https://doi.org/10.1093/bioinformatics/btr597.
+
+Use of Artificial Intelligence
+
+Microsoft Copilot was used to assist with spelling and grammar checks and to
+provide suggestions for structuring the project and identifying potential analysis 
+approaches. All data collection, coding, modelling, interpretation of results, and 
+final writing decisions were performed by the author.
