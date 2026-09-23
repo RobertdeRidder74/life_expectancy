@@ -1,0 +1,1262 @@
+---
+title: "life expectancy"
+author: "Robert de Ridder"
+date: "2026-09-18"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Abstract
+
+This study investigates whether life expectancy can be predicted using socio-economic 
+indicators from Our World in Data. Several predictive models were developed, 
+including linear regression, K-nearest neighbours, and random forests. 
+Model performance was evaluated using RMSE. The random forest model achieved 
+the best performance with a final test RMSE of 1.8 years. Fertility rate and 
+healthcare expenditure emerged as the most influential predictors. GDP per 
+capita was strongly correlated with life expectancy but added limited predictive 
+value once other socio-economic indicators were included.
+
+# Introduction
+
+The course HarvardX PH125.9x: Data Science Capstone is the ninth and final 
+component of the Data Science Professional Certificate program. Within this course, 
+students are required to complete two projects that together determine the final grade.
+This report describes the second project, in which students are free to select 
+their own research topic. For this study, the chosen topic is an analysis of 
+socio-economic factors that may influence life expectancy at birth.
+
+The central research questions are:
+
+1.	To what extent can life expectancy at birth be predicted using socio-economic indicators?
+2.	Which socio-economic factors contribute most strongly to these predictions?
+3.	Which modelling approach provides the best predictive performance?
+
+Life expectancy at birth represents the average number of years a newborn is 
+expected to live. Over the past decades, substantial improvements in public health 
+have been achieved worldwide. According to the World Health Organization (WHO), 
+global life expectancy increased significantly between 2000 and 2019. However, 
+this overall progress masks considerable differences between countries and 
+population groups. Individuals with a lower socio-economic status often have less 
+access to healthcare and education, which may negatively affect their health 
+outcomes and life expectancy (World Health Organization, n.d.).
+In addition to access to healthcare and education, several other factors may 
+contribute to differences in life expectancy. This study utilizes data obtained 
+from Our World in Data (OWID) (Our World in Data, n.d.). The dataset contains a wide range of indicators 
+related to economic conditions, health, lifestyle, and demographics.
+
+The following variables are included in the analysis:
+
+-	Healthcare spending (% of GDP)
+-	Education spending (% of GDP)
+-	Years of schooling (average years of education)
+-	Vaccination coverage (multiple vaccination indicators)
+-	Obesity prevalence (share of adults classified as obese)
+-	Fertility rate (children per woman)
+-	Urbanization (urban and rural population shares)
+-	Renewable energy (share of total energy consumption from renewable sources)
+-	Democracy index (ranging from 0 to 1, where 1 represents the highest level of democracy)
+-	GDP per capita (in U.S. dollars)
+
+The target variable in this study is life expectancy at birth. Using various data analysis 
+techniques and predictive models, the study investigates which factors are most strongly associated
+with life expectancy and to what extent life expectancy can be predicted accurately.
+
+# Approach
+
+The final dataset was constructed by combining eleven separate datasets 
+obtained from Our World in Data (OWID). From each dataset, only the variables 
+relevant to this study were selected. Subsequently, all datasets were transformed 
+into a common structure, allowing them to be merged into a single integrated dataset.
+The healthcare dataset contained the smallest number of observations and was 
+therefore used as the foundation for the merging process. This approach was 
+chosen to minimize the number of missing values introduced during data integration. 
+Despite this strategy, the combined dataset still contained a substantial amount 
+of missing data.
+
+```{r create_dataset, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+################################################################################
+# Load library
+################################################################################
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(ggthemes)) install.packages("ggthemes", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra", repos = "http://cran.us.r-project.org")
+if(!require(lubridate)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
+if(!require(stringr)) install.packages("stringr", repos = "http://cran.us.r-project.org")
+if(!require(readxl)) install.packages("readxl", repos = "http://cran.us.r-project.org")
+if(!require(randomForest)) install.packages("randomForest", repos = "http://cran.us.r-project.org")
+if(!require(zoo)) install.packages("zoo", repos = "http://cran.us.r-project.org")
+if(!require(naniar)) install.packages("naniar", repos = "http://cran.us.r-project.org")
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+if(!require(missForestPredict)) install.packages("missForestPredict", repos = "http://cran.us.r-project.org")
+if(!require(broom)) install.packages("broom", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(caret)
+library(ggplot2)
+library(ggthemes)
+library(knitr)
+library(kableExtra)
+library(lubridate)
+library(stringr)
+library(readxl)
+library(randomForest)
+library(zoo)
+library(naniar)
+library(corrplot)
+library(missForestPredict)
+library(broom)
+library(knitr)
+
+################################################################################
+# Load data
+################################################################################
+
+# Note: this process could take a couple of minutes
+
+options(timeout = 500)
+
+# -----------------------
+# Our World in Data URLs
+# -----------------------
+
+life_url <-
+  "https://ourworldindata.org/grapher/life-expectancy-at-different-ages.csv?v=1&csvType=full&useColumnShortNames=true"
+
+gdp_url <-
+  "https://ourworldindata.org/grapher/gdp-per-capita-penn-world-table.csv?v=1&csvType=full&useColumnShortNames=true"
+
+healthcare_url <-
+  "https://ourworldindata.org/grapher/public-health-expenditure-share-gdp.csv?v=1&csvType=full&useColumnShortNames=true"
+
+schooling_url <-
+  "https://ourworldindata.org/grapher/years-of-schooling.csv?v=1&csvType=full&useColumnShortNames=true&metric_type=average_years_schooling&level=all&sex=both"
+
+vaccination_url <-
+  "https://ourworldindata.org/grapher/vaccination-coverage-who-unicef.csv?v=1&csvType=full&useColumnShortNames=true&metric=coverage&antigen=comparison"
+
+education_spending_url <-
+  "https://ourworldindata.org/grapher/education-spending.csv?v=1&csvType=full&useColumnShortNames=true&spending_type=gdp_share&level=all"
+
+obesity_url <-
+  "https://ourworldindata.org/grapher/share-of-adults-defined-as-obese.csv?v=1&csvType=full&useColumnShortNames=true"
+
+fertility_url <-
+  "https://ourworldindata.org/grapher/children-born-per-woman.csv?v=1&csvType=full&useColumnShortNames=true"
+
+urbanization_url <-
+  "https://ourworldindata.org/grapher/share-of-people-living-in-urban-and-rural-areas-degurba.csv?v=1&csvType=full&useColumnShortNames=true"
+
+renewables_url <-
+  "https://ourworldindata.org/grapher/energy-mix.csv?v=1&csvType=full&useColumnShortNames=true&source=renewables&metric=share"
+
+democracy_url <-
+  "https://ourworldindata.org/explorers/democracy.csv?v=1&csvType=full&useColumnShortNames=true&Dataset=Varieties+of+Democracy&Metric=Electoral+democracy&Sub-metric=Main+index"
+
+# -----------------------
+# Import datasets
+# -----------------------
+
+life_at_birth <- read.csv(life_url)                    # life expectancy
+gdp_per_capita <- read.csv(gdp_url)                    # GDP per capita ($)
+spending_on_education <- read.csv(education_spending_url) # share of gdp
+healthcare_spending <- read.csv(healthcare_url)        # healthcare spending (% GDP)
+years_of_schooling <- read.csv(schooling_url)          # average years of schooling
+vaccination_coverage <- read.csv(vaccination_url)      # vaccination coverage
+share_of_adults_defined_as_obese <- read.csv(obesity_url)
+fertility_rate <- read.csv(fertility_url)              # children per woman
+urbanization <- read.csv(urbanization_url)             # urban/rural population
+renewables <- read.csv(renewables_url)                 # renewable energy share
+demacracy <- read.csv(democracy_url)                   # 0 to 1. 1 = most demacratic
+
+################################################################################
+# select columns of interest and rename
+################################################################################
+
+life_at_birth <- life_at_birth |> select(entity, year, life_expectancy_0) |>
+  rename(life_expectancy = life_expectancy_0)
+#############################################
+gdp_per_capita <- gdp_per_capita |> select(entity, year, rgdpo_pc) |> 
+  rename( gdp_pc = rgdpo_pc)
+#############################################
+spending_on_education <- spending_on_education |> 
+  select(entity, year, combined_expenditure_share_gdp) |>
+  rename(spending_edu = combined_expenditure_share_gdp)
+#############################################
+healthcare_spending <- healthcare_spending |> 
+  select(entity, year, share_gdp) |>
+  rename(spending_healthcare = share_gdp)
+#############################################
+years_of_schooling <- years_of_schooling |>
+  select(entity, year, mys__sex_total) |>
+  rename(years_in_school = mys__sex_total)
+#############################################
+vaccination_coverage <- vaccination_coverage |>
+  select(-code)
+#############################################
+share_of_adults_defined_as_obese <- share_of_adults_defined_as_obese |>
+  select(entity, year, obesity_among_adults__bmi__gt__30_kg_m2__crude_estimate__pct__sex_both_sexes__age_group_18plus__years_of_age) |>
+  rename(share_obesity = obesity_among_adults__bmi__gt__30_kg_m2__crude_estimate__pct__sex_both_sexes__age_group_18plus__years_of_age)
+#############################################
+fertility_rate <- fertility_rate |>
+  select(entity, year, fertility_rate_hist) |>
+  rename(children_per_woman = fertility_rate_hist)
+#############################################
+urbanization <- urbanization |> 
+  select(entity, year, value__metric_popshare__location_type_rural_total__data_type_estimates,
+         value__metric_popshare__location_type_urban_total__data_type_estimates) |>
+  rename(move_from_city = value__metric_popshare__location_type_rural_total__data_type_estimates,
+         move_to_city = value__metric_popshare__location_type_urban_total__data_type_estimates)
+
+urbanization <- urbanization |> # take all years below 2025 and fill the caps between the 5 year interval
+  select(entity, year, move_from_city,
+         move_to_city) |>
+  filter(year < 2025)
+
+urbanization <- urbanization %>%
+  arrange(entity, year) %>%
+  group_by(entity) %>%
+  complete(year = min(year):max(year)) %>%
+  mutate(
+    move_from_city =
+      na.approx(
+        move_from_city,
+        x = year,
+        na.rm = FALSE
+      ),
+    move_to_city =
+      na.approx(
+        move_to_city,
+        x = year,
+        na.rm = FALSE
+      )
+  )
+#############################################
+renewables <- renewables |>
+  select(entity, year, renewables_share_pct)
+#############################################
+demacracy <- demacracy |>
+  select(entity, year, electdem_vdem__estimate_best) |>
+  rename(elect_dem_index = electdem_vdem__estimate_best)
+
+################################################################################
+# create new dataset
+################################################################################
+
+raw_data <- healthcare_spending %>% # join by healthcare to avoid alot of na"s
+  left_join(life_at_birth, by = c("entity", "year")) %>%
+  left_join(gdp_per_capita, by = c("entity", "year")) |>
+  left_join(spending_on_education, by = c("entity", "year")) |>
+  left_join(years_of_schooling, by = c("entity", "year")) |>
+  left_join(vaccination_coverage, by = c("entity", "year")) |>
+  left_join(share_of_adults_defined_as_obese, by = c("entity", "year")) |>
+  left_join(fertility_rate, by = c("entity", "year")) |>
+  left_join(urbanization, by = c("entity", "year")) |>
+  left_join(renewables, by = c("entity", "year")) |>
+  left_join(demacracy, by = c("entity", "year"))
+
+# create table with missing values
+
+na_summary <- sort(colMeans(is.na(raw_data)), decreasing = TRUE)
+
+na_table <- data.frame(
+  Variable = names(na_summary),
+  Missing_Percentage = round(na_summary * 100, 1)
+) %>%
+  filter(Missing_Percentage > 0)
+
+kable(
+  na_table,
+  caption = "Variables with missing values"
+)
+```
+
+Variables with more than 50% missing values were removed from the analysis. 
+The remaining missing values were imputed using the missForest algorithm after 
+the data had been divided into training, validation, and final test sets. 
+
+This approach was selected because previous research has shown that missForest 
+can effectively handle different data types and often outperforms several traditional 
+imputation methods. An additional advantage is that the method provides an 
+out-of-bag estimate of the imputation error (Stekhoven and Bühlmann, 2012).
+Furthermore, the relationships among variables in this dataset are likely to be 
+both linear and non-linear, making simple median or mean imputation less appropriate, 
+as these methods may fail to preserve the underlying structure of the data.
+
+```{r missing_values, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+################################################################################
+# remove columns with more than 50% na's
+################################################################################
+
+raw_data <- raw_data |>
+  select(-coverage__antigen_rotac, -coverage__antigen_ipv1, -coverage__antigen_pcv3,
+         -coverage__antigen_hepb3)
+
+raw_data <- raw_data[!is.na(raw_data$life_expectancy), ] # remove na's out of target
+
+################################################################################
+# split data in work and final test set
+################################################################################
+
+set.seed(123)
+
+train_index <- createDataPartition(raw_data$life_expectancy,
+                                   p = 0.85,
+                                   list = FALSE)
+
+work_set <- raw_data[train_index, ]
+final_test_set  <- raw_data[-train_index, ]
+
+################################################################################
+# split work_set in train and validation
+################################################################################
+
+set.seed(123)
+
+work_index <- createDataPartition(work_set$life_expectancy,
+                                   p = 0.8,
+                                   list = FALSE)
+
+train <- work_set[work_index, ]
+validate  <- work_set[-work_index, ]
+
+
+################################################################################
+# deal with missing values on train, test and final test set
+################################################################################
+
+################################################################################
+# Remove identifiers
+################################################################################
+
+train <- train |> 
+  select(-entity, -year)
+
+validate <- validate |> 
+  select(-entity, -year)
+
+final_test_set <- final_test_set |> 
+  select(-entity, -year)
+
+
+################################################################################
+# imputation
+# Fit preprocessing only on training data
+################################################################################
+
+# Separate target from predictors
+x_train <- train |> 
+  select(-life_expectancy)
+
+x_validate <- validate |> 
+  select(-life_expectancy)
+
+x_final_test <- final_test_set |> 
+  select(-life_expectancy)
+
+
+# Fit imputation model on training data only
+set.seed(123)
+
+imputation_model <- missForestPredict::missForest(
+  x_train,
+  maxiter = 10,
+  initialization = "median/mode",
+  save_models = TRUE,
+  num.threads = 2,
+  verbose = FALSE
+)
+
+
+# Apply the same preprocessing to all partitions
+x_train_imp <- imputation_model$ximp
+
+x_validate_imp <- missForestPredict::missForestPredict(
+  imputation_model,
+  newdata = x_validate
+)
+
+x_final_test_imp <- missForestPredict::missForestPredict(
+  imputation_model,
+  newdata = x_final_test
+)
+
+
+################################################################################
+# Recombine target and predictors
+################################################################################
+
+train <- cbind(
+  life_expectancy = train$life_expectancy,
+  x_train_imp
+)
+
+validate <- cbind(
+  life_expectancy = validate$life_expectancy,
+  x_validate_imp
+)
+
+final_test_set <- cbind(
+  life_expectancy = final_test_set$life_expectancy,
+  x_final_test_imp
+)
+
+
+
+```
+
+Following imputation and data preprocessing, no missing values remained 
+in the training, validation, or final test sets.
+
+```{r missing_value, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+################################################################################
+# Check missing values
+################################################################################
+
+if (
+  sum(is.na(train)) == 0 &
+  sum(is.na(validate)) == 0 &
+  sum(is.na(final_test_set)) == 0
+) {
+  cat("No missing values were found in the training, validation, or final test set.\n")
+}
+```
+
+To assess whether the data partitions are representative of the original dataset, 
+a boxplot was constructed. It shows that the distributions of life expectancy 
+are similar across the training, validation, and final test sets, 
+suggesting that the data split was successful.
+
+```{r boxplot, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# Check train, validate and final test set data
+################################################################################
+
+# Check if train and valid data are representative
+
+boxplot(
+  train$life_expectancy,
+  validate$life_expectancy,
+  final_test_set$life_expectancy
+)
+
+# create table with stats
+
+summary_table <- data.frame(
+  Dataset = c("Train", "Validation", "Test"),
+  N = c(nrow(train), nrow(validate), nrow(final_test_set)),
+  Mean = c(
+    mean(train$life_expectancy),
+    mean(validate$life_expectancy),
+    mean(final_test_set$life_expectancy)
+  ),
+  SD = c(
+    sd(train$life_expectancy),
+    sd(validate$life_expectancy),
+    sd(final_test_set$life_expectancy)
+  ),
+  Min = c(
+    min(train$life_expectancy),
+    min(validate$life_expectancy),
+    min(final_test_set$life_expectancy)
+  ),
+  Median = c(
+    median(train$life_expectancy),
+    median(validate$life_expectancy),
+    median(final_test_set$life_expectancy)
+  ),
+  Max = c(
+    max(train$life_expectancy),
+    max(validate$life_expectancy),
+    max(final_test_set$life_expectancy)
+  )
+)
+
+summary_table[-1] <- round(summary_table[-1], 2)
+
+kable(
+  summary_table,
+  caption = "Descriptive statistics of life expectancy across the data splits"
+)
+```
+
+# EDA
+
+If we examine global life expectancy over time (Figure 1), it is evident that 
+life expectancy has increased substantially over the past decades. Overall, 
+this suggests that global health outcomes have improved considerably.
+
+```{r fig1, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# EDA
+################################################################################
+
+#life expectancy world over the years
+
+life_world <- life_at_birth %>%
+  filter(entity == "World")
+
+# fig 1.
+
+ggplot(life_world,
+       aes(x = year,
+           y = life_expectancy,
+           color = entity)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Fig 1. Life expectancy over time",
+    x = "Year",
+    y = "Life expectancy in years",
+    color = ""
+  ) +
+  theme_minimal()
+```
+
+However, when comparing countries with the highest and lowest GDP per capita (Figure 2),
+a clear disparity becomes visible. The poorest country in the dataset has a 
+life expectancy below 60 years, whereas the richest country has a life expectancy 
+exceeding 80 years. This represents a difference of more than 20 years. Furthermore,
+when compared with the global average life expectancy of over 70 years, 
+the poorest country falls approximately 10 years below the worldwide average.
+
+```{r fig2, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# find country with highest and lowest life expectancy
+
+############################################################################
+# Find the richest country using the most recent data point for each entity
+
+gdp_current_rich <- gdp_per_capita %>%
+  group_by(entity) %>%
+  filter(year == max(year)) %>%  # Gets the latest year available for each country
+  ungroup() %>%
+  arrange(desc(gdp_pc)) %>%
+  slice(1)
+
+# Find the poorest country using the most recent data point for each entity
+
+gdp_current_poor <- gdp_per_capita %>%
+  group_by(entity) %>%
+  filter(year == max(year)) %>%  # Gets the latest year available for each country
+  ungroup() %>%
+  arrange(gdp_pc) %>%
+  slice(1)
+
+# create a table
+
+gdp_extremes <- bind_rows(
+  gdp_current_rich %>%
+    mutate(Category = "Richest Country"),
+  gdp_current_poor %>%
+    mutate(Category = "Poorest Country")
+) %>%
+  select(Category, entity, year, gdp_pc)
+
+kable(
+  gdp_extremes,
+  col.names = c("Category", "Country", "Year", "GDP per Capita"),
+  caption = "Countries with the Highest and Lowest GDP per Capita"
+)
+
+############################################################################
+
+# plot life expectancy world, highest GDP and lowest GDP
+
+data_plot <- life_at_birth %>%
+  filter(entity %in% c("World", "Ireland", "South Sudan"),
+         year >= 1950)
+
+# fig 2.
+
+ggplot(data_plot,
+       aes(x = year,
+           y = life_expectancy,
+           color = entity)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Fig 2. life expectancy poor versus rich",
+    x = "Year",
+    y = "Life expectancy in years",
+    color = "Country"
+  ) +
+  theme_minimal()
+```
+
+If we look at the target variable (life expectancy) (Figure 3), 
+it becomes clear that the distribution is right-skewed. This indicates substantial 
+variation across observations and suggests that many countries cluster around 
+relatively high life expectancy values while a smaller number of countries have 
+considerably lower values.
+
+```{r fig3, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# fig3. Target variable
+
+ggplot(work_set, aes(x = life_expectancy)) +
+  geom_histogram(fill = "steelblue", color = "white", bins = 30) +
+  labs(
+    title = "Fig 3. Distribution of target variable",
+    x = "Life expectancy in years",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+```
+
+A correlation matrix (Figure 4) reveals that the target variable is strongly 
+correlated with several predictors, most notably GDP per capita, suggesting 
+that economic conditions may be an important determinant of life expectancy and 
+that GDP per capita itself contains substantial information about the target variable.
+
+```{r fig4, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+################################################################################
+# fig 4. correlation matrix
+
+cor_matrix <- cor(
+  work_set[, c(
+    "life_expectancy",
+    "spending_healthcare",
+    "spending_edu",
+    "years_in_school",
+    "coverage__antigen_mcv1",
+    "coverage__antigen_dtpcv3",
+    "coverage__antigen_hib3",
+    "coverage__antigen_rcv1",
+    "share_obesity",
+    "children_per_woman",
+    "move_from_city",
+    "move_to_city",
+    "renewables_share_pct",
+    "elect_dem_index",
+    "gdp_pc"
+  )],
+  use = "complete.obs"
+)
+
+corrplot(
+  cor_matrix,
+  method = "color",
+  type = "upper",
+  title = "fig 4. Correlation predictors",
+  mar = c(0, 0, 2, 0)
+)
+```
+
+However, GDP per capita is also strongly correlated with several other predictors ,
+suggesting that it may capture broader socio-economic conditions reflected in 
+multiple indicators. Figure 5 shows that, after standardization, the distribution
+of GDP per capita overlaps substantially with the distributions of many predictors. 
+While this overlap does not imply redundancy on its own, it suggests that GDP 
+per capita may share information with other variables in the dataset.
+
+For instance, healthcare spending is strongly correlated with GDP per capita.
+If we look at the distribution of healthcare spending and GDP per capita, it is 
+noticeable that GDP covers a big area of healthcare spending, witch could indicated 
+that some predictive information may already been captioned by other predictors in the dataset.
+
+ Therefore, we hypothesize that the incremental predictive value of GDP per capita 
+ may be smaller than expected once the remaining predictors are included in the model. 
+ This hypothesis will be evaluated in the modelling section by comparing model 
+ performance and variable importance measures.
+
+```{r fig5, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+################################################################################
+# fig 5. individual predictors with GDP as overlap
+
+# scale
+panel_scaled <- work_set %>%
+  mutate(
+    across(
+      where(is.numeric),
+      ~ as.numeric(scale(.))
+    )
+  )
+
+# pivot longer
+panel_long_scaled <- panel_scaled %>%
+  select(-life_expectancy, -gdp_pc, -year, -entity) %>%
+  pivot_longer(
+    everything(),
+    names_to = "variable",
+    values_to = "value"
+  )
+
+# fig 5.
+ggplot(panel_long_scaled, aes(x = value)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  geom_density(
+    data = panel_scaled,
+    aes(x = gdp_pc),
+    colour = "red",
+    linewidth = 1,
+    fill = NA,
+    inherit.aes = FALSE
+  ) +
+  facet_wrap(
+    ~ variable,
+    scales = "free"
+  ) +
+  labs(
+    title = " fig 5. Distribution of predictors with GDP per capita as overlay",
+    x = "Value",
+    y = "Density"
+  ) +
+  theme_minimal()
+```
+
+# Modelling
+
+Before building the predictive models, it is important to consider which variables 
+should be included in the analysis. The objective of this study is to identify 
+socio-economic factors that are associated with life expectancy at birth. 
+
+Variables such as the country itself contribute little to under-standing these 
+underlying relationships. If a model learns that a particular country tends to 
+have a higher or lower life expectancy, country-specific characteristics may 
+obscure the effects of the actual predictors of interest. Therefore, the country 
+variable was removed from the dataset prior to model training.
+
+In addition, the year variable was excluded from the final models. 
+The purpose of this study is to identify socio-economic factors associated with 
+life expectancy, rather than to capture temporal trends. The year itself is not 
+a direct explanatory factor but rather reflects broader societal, medical, and 
+technological developments that have occurred over time. Excluding year allows 
+the interpretation of the remaining predictors to remain more closely aligned 
+with the research objective. Furthermore, it prevents the models from deriving 
+a substantial portion of their predictive performance from the general upward 
+trend in life expectancy over time, rather than from the socio-economic factors 
+under investigation.
+
+The modelling process begins with a simple baseline model, followed by a linear 
+regression model, a k-nearest neighbours (KNN) model, and a Random Forest model. 
+Model performance is evaluated using the Root Mean Squared Error (RMSE) metric.
+
+The RMSE is defined as:
+
+$$
+RMSE =
+\sqrt{
+\frac{1}{n}
+\sum_{i=1}^{n}
+(\hat{y}-y)^2
+}
+$$
+
+where:
+
+
+
+- $y$ Actual life expectancy
+- $\hat{y}$ Predicted life expectancy
+- $n$ Number of observations
+
+
+
+The RMSE measures the average magnitude of the prediction errors, giving greater weight to large errors due to the squaring operation. A lower RMSE indicates a more accurate predictive model.
+
+To assess the predictive contribution of GDP per capita, the modelling procedure 
+is conducted twice: once excluding GDP per capita and once including it as a 
+predictor. 
+As suggested in the exploratory data analysis, GDP per capita may 
+share much of its explanatory power with other socio-economic variables.
+Comparing model performance under both scenarios will therefore provide insight 
+into the unique predictive value of GDP per capita.
+
+Finally, the best-performing model, as determined by the validation RMSE, 
+will be evaluated on the independent final test set to obtain an unbiased 
+estimate of its predictive performance.
+
+A simple baseline model yields an RMSE of approximately 7.9 years.
+This result is based solely on using the mean life expectancy as the prediction.
+
+```{r base_line, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# modeling
+################################################################################
+
+################################################################################
+# Simple base line
+################################################################################
+
+mean_life <- mean(train$life_expectancy)
+
+pred_base <- rep(mean_life, nrow(validate))
+
+rmse_simple <- sqrt(
+  mean((pred_base - validate$life_expectancy)^2)
+)
+
+rmse_simple # 7.9
+```
+
+The linear model without GDP per capita already performs considerably better, 
+reducing the RMSE to 4.5 years. Figure 6 shows the relationship between actual 
+and predicted life expectancy. An interesting question is which variables 
+contribute most to the model's performance. Fertility, measured as the number 
+of children per woman, is by far the most important predictor.
+
+```{r linear, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# linear model
+################################################################################
+
+model <- lm(
+  life_expectancy ~ spending_healthcare + spending_edu +
+    years_in_school + coverage__antigen_mcv1 + coverage__antigen_dtpcv3 + 
+    coverage__antigen_hib3 + coverage__antigen_rcv1 + share_obesity + children_per_woman +
+    move_from_city + move_to_city + renewables_share_pct + elect_dem_index,
+  data = train
+)
+
+pred <- predict(model, newdata = validate)
+
+rmse_lm <- sqrt(
+  mean((pred - validate$life_expectancy)^2)
+)
+
+rmse_lm # 4.5
+
+# plot model
+
+plot(validate$life_expectancy, pred,
+     main = "Fig 6.: Actual vs predicted (linear)",
+     xlab = "Actual life expectancy",
+     ylab = "Predicted life expectancy",
+     pch = 19,
+     col = "steelblue")
+
+abline(a = 0, b = 1, col = "red", lwd = 2)
+
+tidy(model) %>%
+  kable(digits = 3, caption = "Regression Model Results")
+
+```
+
+When the same model is estimated with GDP per capita included, the RMSE changes 
+very little. Fertility remains the most important variable, 
+indicating that GDP per capita adds limited predictive value beyond the 
+information already captured by the other variables.
+
+```{r linear_with_gdp_pc, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# linear model with gdp_pc
+################################################################################
+
+model_gdp_pc <- lm(
+  life_expectancy ~ spending_healthcare + spending_edu +
+    years_in_school + coverage__antigen_mcv1 + coverage__antigen_dtpcv3 + 
+    coverage__antigen_hib3 + coverage__antigen_rcv1 + share_obesity + children_per_woman +
+    move_from_city + move_to_city + renewables_share_pct + elect_dem_index + gdp_pc,
+  data = train
+)
+
+pred <- predict(model_gdp_pc, newdata = validate)
+
+rmse_lm_gdp <- sqrt(
+  mean((pred - validate$life_expectancy)^2)
+)
+
+rmse_lm_gdp # 4.5
+
+tidy(model_gdp_pc) %>%
+  kable(digits = 3, caption = "Regression Model Results with GDP")
+
+```
+
+Using the same set of predictors in a K-nearest neighbors (KNN) model,
+but excluding GDP per capita, results in an RMSE of 2.3 years. Figure 7 illustrates 
+the relationship between actual and predicted life expectancy. Compared with the 
+linear model, the KNN model performs more accurately, suggesting that the relationship 
+between the predictors and life expectancy is captured more effectively by a 
+KNN model. In the KNN model, healthcare expenditure appears to be the 
+most important predictor.
+
+
+```{r knn, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# KNN model
+################################################################################
+
+set.seed(123)
+
+# train KNN
+knn_model <- train(
+  life_expectancy ~ spending_healthcare + spending_edu +
+    years_in_school + coverage__antigen_mcv1 + coverage__antigen_dtpcv3 + 
+    coverage__antigen_hib3 + coverage__antigen_rcv1 + share_obesity + children_per_woman +
+    move_from_city + move_to_city + renewables_share_pct + elect_dem_index,
+  data = train,
+  method = "knn",
+  preProcess = c("center", "scale"),
+  tuneLength = 10
+)
+
+knn_model$bestTune
+
+plot(knn_model)
+
+# predict
+pred_knn <- predict(knn_model, newdata = validate)
+
+# RMSE
+rmse_knn <- sqrt(
+  mean((pred_knn - validate$life_expectancy)^2)
+)
+
+rmse_knn # 2.3
+
+# plot
+plot(
+  validate$life_expectancy,
+  pred_knn,
+  main = "Figure 7: Actual vs predicted (KNN)",
+  xlab = "Actual life expectancy",
+  ylab = "Predicted life expectancy",
+  pch = 19,
+  col = "steelblue"
+)
+
+abline(a = 0, b = 1, col = "red", lwd = 2)
+
+# variable importance
+
+varimp_tbl <- varImp(knn_model)$importance %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("Variable") %>%
+  arrange(desc(Overall))
+
+kable(
+  varimp_tbl,
+  digits = 3,
+  caption = "Table 6. Variable importance for the KNN model"
+)
+
+```
+
+When GDP per capita is added to the KNN model, the RMSE shows little to no improvement. 
+However, GDP per capita exhibits greater predictive importance in this 
+specification than in the linear model. Despite its increased contribution, 
+the overall predictive performance of the model remains largely unchanged.
+
+```{r knn_gdp, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# KNN model with gdp_pc
+################################################################################
+
+set.seed(123)
+
+# train KNN
+knn_model_gdp <- train(
+  life_expectancy ~ spending_healthcare + spending_edu +
+    years_in_school + coverage__antigen_mcv1 + coverage__antigen_dtpcv3 + 
+    coverage__antigen_hib3 + coverage__antigen_rcv1 + share_obesity + children_per_woman +
+    move_from_city + move_to_city + renewables_share_pct + elect_dem_index + gdp_pc,
+  data = train,
+  method = "knn",
+  preProcess = c("center", "scale"),
+  tuneLength = 10
+)
+
+knn_model_gdp$bestTune
+
+plot(knn_model_gdp)
+
+# voorspellingen
+pred_knn <- predict(knn_model_gdp, newdata = validate)
+
+# RMSE
+rmse_knn_gdp <- sqrt(
+  mean((pred_knn - validate$life_expectancy)^2)
+)
+
+rmse_knn_gdp # 2.2
+
+# variable importance
+
+varimp_tbl <- varImp(knn_model_gdp)$importance %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("Variable") %>%
+  arrange(desc(Overall))
+
+kable(
+  varimp_tbl,
+  digits = 3,
+  caption = "Table 7. Variable importance for the KNN model with GDP"
+)
+
+```
+
+If we apply the same procedure using a Random Forest model,
+the resulting RMSE is 2 years. This performance is slightly better than that 
+of the KNN model.
+
+Figure 8 illustrates the relationship between actual and predicted life expectancy. 
+
+In the Random Forest model, healthcare 
+expenditure and fertility rate emerge as the most important predictors.
+
+```{r RF, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# rf model
+################################################################################
+
+set.seed(123)
+
+tunegrid <- expand.grid(mtry = c(2,4,6,8,10))
+
+rf_model <- train(
+  life_expectancy ~ spending_healthcare + spending_edu +
+    years_in_school + coverage__antigen_mcv1 + coverage__antigen_dtpcv3 + 
+    coverage__antigen_hib3 + coverage__antigen_rcv1 + share_obesity + children_per_woman +
+    move_from_city + move_to_city + renewables_share_pct + elect_dem_index,
+  data = train,
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 5),
+  tuneGrid = tunegrid,
+  ntree = 500
+)
+
+pred_rf <- predict(rf_model, newdata = validate)
+
+rmse_rf <- sqrt(
+  mean((pred_rf - validate$life_expectancy)^2)
+)
+
+rmse_rf # 2
+
+plot(validate$life_expectancy, pred_rf,
+     main = "Figure 8: Actual vs predicted (RF)",
+     xlab = "Actual life expectancy",
+     ylab = "Predicted life expectancy",
+     pch = 19,
+     col = "steelblue")
+
+abline(a = 0, b = 1, col = "red", lwd = 2)
+
+# variable importance
+
+varimp_tbl <- varImp(rf_model)$importance %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("Variable") %>%
+  arrange(desc(Overall))
+
+kable(
+  varimp_tbl,
+  digits = 3,
+  caption = "Table 8. Variable importance for the RF model"
+)
+
+plot(varImp(rf_model))
+
+```
+
+When GDP per capita is added to the Random Forest model, the RMSE does not
+improve that much. It settles around 1.98 years. Similar to the KNN results, 
+GDP per capita appears to have a 
+higher variable importance within the model, but it's inclusion does not lead 
+to a meaningful improvement in predictive performance. This finding suggests 
+that much of the information contained in GDP per capita is already captured 
+by the other socio-economic indicators included in the analysis.
+
+```{r RF_gdp, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+################################################################################
+# rf model with gdp_pc
+################################################################################
+
+set.seed(123)
+
+tunegrid <- expand.grid(mtry = c(2,4,6,8,10))
+
+rf_model_gdp <- train(
+  life_expectancy ~ spending_healthcare + spending_edu +
+    years_in_school + coverage__antigen_mcv1 + coverage__antigen_dtpcv3 + 
+    coverage__antigen_hib3 + coverage__antigen_rcv1 + share_obesity + children_per_woman +
+    move_from_city + move_to_city + renewables_share_pct + elect_dem_index + gdp_pc,
+  data = train,
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 5),
+  tuneGrid = tunegrid,
+  ntree = 500
+)
+
+pred_rf <- predict(rf_model_gdp, newdata = validate)
+
+rmse_rf_gdp <- sqrt(
+  mean((pred_rf - validate$life_expectancy)^2)
+)
+
+rmse_rf_gdp # 1.98
+
+# variable importance
+
+varimp_tbl <- varImp(rf_model_gdp)$importance %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("Variable") %>%
+  arrange(desc(Overall))
+
+kable(
+  varimp_tbl,
+  digits = 3,
+  caption = "Table 9. Variable importance for the RF model with GDP"
+)
+
+plot(varImp(rf_model_gdp))
+
+```
+
+Variable Importance. Based on the variable importance measures of the
+best performing model, the Random Forest model including GDP per capita, 
+it became evident that the variable share of obesity contributed little to no 
+predictive value. As its importance was effectively zero, this variable was 
+excluded from the final model.
+
+Although GDP per capita did not substantially improve predictive performance, 
+the Random Forest model including GDP per capita was selected for evaluation 
+on the independent final test set. This model achieved an RMSE of 1.8 years, 
+indicating that life expectancy can be predicted with a relatively high degree 
+of accuracy using the selected socio-economic indicators.
+
+```{r final, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+################################################################################
+# test RF model with GDP on final_test_set
+################################################################################
+
+set.seed(123)
+
+tunegrid <- expand.grid(mtry = c(2,4,6,8,10))
+
+rf_model_best <- train(
+  life_expectancy ~ spending_healthcare + spending_edu +
+    years_in_school + coverage__antigen_mcv1 + coverage__antigen_dtpcv3 + 
+    coverage__antigen_hib3 + coverage__antigen_rcv1 + children_per_woman +
+    move_from_city + move_to_city + renewables_share_pct + elect_dem_index + gdp_pc,
+  data = train,
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 5),
+  tuneGrid = tunegrid,
+  ntree = 500
+)
+
+pred_rf <- predict(rf_model_best, newdata = final_test_set)
+
+rmse_final_test <- sqrt(
+  mean((pred_rf - final_test_set$life_expectancy)^2)
+)
+
+rmse_final_test # 1.8
+```
+
+Table 9 summarizes the predictive performance of all models evaluated on the validation set. 
+The results show a substantial improvement over the baseline model for all 
+machine learning approaches. The Random Forest model achieved the lowest validation 
+RMSE and was therefore selected for final evaluation on the independent test set. (Table 10)
+
+```{r summary, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+################################################################################
+# Summary
+################################################################################
+
+model_results <- data.frame(
+  Model = c(
+    "Baseline",
+    "Linear Regression",
+    "Linear Regression + GDP",
+    "KNN",
+    "KNN + GDP",
+    "Random Forest",
+    "Random Forest + GDP"
+  ),
+  Validation_RMSE = c(
+    rmse_simple,
+    rmse_lm,
+    rmse_lm_gdp,
+    rmse_knn,
+    rmse_knn_gdp,
+    rmse_rf,
+    rmse_rf_gdp
+  )
+)
+
+model_results$Validation_RMSE <- round(
+  model_results$Validation_RMSE,
+  2
+)
+
+kable(
+  model_results,
+  caption = "Table 10. Validation RMSE for all evaluated models"
+)
+
+final_results <- data.frame(
+  Model = "Random Forest + GDP",
+  Validation_RMSE = round(rmse_rf_gdp, 2),
+  Final_Test_RMSE = round(rmse_final_test, 2)
+)
+
+kable(
+  final_results,
+  caption = "Table 11. Performance of the final selected model"
+)
+```
+
+Although only a limited number of predictors are included in this analysis, 
+a model such as this could still provide useful insights for policymakers seeking 
+to improve population health outcomes and increase life expectancy. 
+
+# Conclusion
+
+This study examined whether life expectancy at birth can be predicted using a
+range of socio-economic indicators and investigated which factors contribute 
+most strongly to these predictions.
+Referring to the first and third research questions, the results show that life 
+expectancy can be predicted with reasonable accuracy using socio-economic indicators.
+The best-performing model was a RF model, which achieved a 
+final test RMSE of 1.8 years. This indicates that life expectancy can be 
+predicted within approximately two years on average, representing a substantial 
+improvement over the baseline model.
+With respect to the second research question, healthcare expenditure and fertility rate
+emerged as the most influential predictors across several modelling approaches. 
+Education, vaccination cover-age, and other socio-economic indicators also 
+contributed to the predictive performance of the models.
+An interesting finding is that GDP per capita, despite being strongly associated 
+with life expectancy, added relatively little predictive value once other 
+socio-economic indicators were included in the analysis. This suggests that
+the effects of national wealth may already be reflected through factors such as 
+healthcare, education, and other investments that directly influence population health.
+
+Several limitations should be acknowledged. The analysis was restricted to the 
+variables available from the selected data sources, and substantial missing data 
+required imputation. Furthermore, the results represent statistical associations 
+and should not be interpreted as causal relationships.
+Overall, the findings suggest that socio-economic indicators can provide 
+meaningful insights into differences in life expectancy. While economic prosperity 
+remains important, the way resources are translated into healthcare, education, 
+and broader social development appears to be at least as important as income levels alone.
+
+# References
+
+World Health Organization (n.d.) Health inequality monitoring: harnessing data to advance health equity. Available at: https://iris.who.int/server/api/core/bitstreams/7ed039ab-4a7f-4f66-9b4b-264008d98f81/content (Accessed: 20 September 2026).
+
+Our World in Data (n.d.) Our World in Data. Available at:
+https://ourworldindata.org/ (Accessed: 20 September 2026).
+
+Stekhoven, D.J. and Bühlmann, P. (2012) ‘MissForest: non-parametric missing value 
+imputation for mixed-type data’, Bioinformatics, 28(1), pp. 112–118. Available at:
+https://doi.org/10.1093/bioinformatics/btr597.
