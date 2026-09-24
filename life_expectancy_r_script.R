@@ -807,7 +807,7 @@ rmse_rf_gdp # 2
 
 # variable importance
 
-varimp_tbl <- varImp(knn_model_gdp)$importance %>%
+varimp_tbl <- varImp(rf_model_gdp)$importance %>%
   as.data.frame() %>%
   tibble::rownames_to_column("Variable") %>%
   arrange(desc(Overall))

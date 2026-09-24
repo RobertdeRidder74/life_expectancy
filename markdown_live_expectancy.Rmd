@@ -624,7 +624,7 @@ ggplot(work_set, aes(x = life_expectancy)) +
 
 A correlation matrix (Figure 4) reveals that the target variable is strongly 
 correlated with several predictors, most notably GDP per capita, suggesting 
-that economic conditions may be an important determinant of life expectancy and 
+that economic conditions may be an important predictor of life expectancy and 
 that GDP per capita itself contains substantial information about the target variable.
 
 ```{r fig4, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
