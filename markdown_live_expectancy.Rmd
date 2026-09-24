@@ -291,6 +291,15 @@ Furthermore, the relationships among variables in this dataset are likely to be
 both linear and non-linear, making simple median or mean imputation less appropriate, 
 as these methods may fail to preserve the underlying structure of the data.
 
+An 85% / 15% split was used to obtain a sufficiently large independent final test set,
+while keeping enough observations for model training. The remaining 85% of the data
+was further divided into 80% training and 20% validation data. This resulted in 
+approximately 68% of the original data being used for training, 17% for validation, 
+and 15% for final testing.
+
+To avoid data leakage, the imputation model was fitted exclusively on the training 
+data and then applied to the validation and final test sets.
+
 ```{r missing_values, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
 ################################################################################
 # remove columns with more than 50% na's
@@ -1219,6 +1228,8 @@ kable(
 Although only a limited number of predictors are included in this analysis, 
 a model such as this could still provide useful insights for policymakers seeking 
 to improve population health outcomes and increase life expectancy. 
+Additional health, environmental, and social indicators could also be incorporated 
+to determine whether prediction accuracy can be improved further.
 
 # Conclusion
 
@@ -1249,6 +1260,7 @@ Overall, the findings suggest that socio-economic indicators can provide
 meaningful insights into differences in life expectancy. While economic prosperity 
 remains important, the way resources are translated into healthcare, education, 
 and broader social development appears to be at least as important as income levels alone.
+
 
 # References
 
