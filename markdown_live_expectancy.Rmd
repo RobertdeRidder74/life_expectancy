@@ -175,7 +175,7 @@ share_of_adults_defined_as_obese <- read.csv(obesity_url)
 fertility_rate <- read.csv(fertility_url)              # children per woman
 urbanization <- read.csv(urbanization_url)             # urban/rural population
 renewables <- read.csv(renewables_url)                 # renewable energy share
-demacracy <- read.csv(democracy_url)                   # 0 to 1. 1 = most demacratic
+democracy <- read.csv(democracy_url)                   # 0 to 1. 1 = most demacratic
 
 ################################################################################
 # select columns of interest and rename
@@ -243,7 +243,7 @@ urbanization <- urbanization %>%
 renewables <- renewables |>
   select(entity, year, renewables_share_pct)
 #############################################
-demacracy <- demacracy |>
+democracy <- democracy |>
   select(entity, year, electdem_vdem__estimate_best) |>
   rename(elect_dem_index = electdem_vdem__estimate_best)
 
@@ -261,7 +261,7 @@ raw_data <- healthcare_spending %>% # join by healthcare to avoid alot of na"s
   left_join(fertility_rate, by = c("entity", "year")) |>
   left_join(urbanization, by = c("entity", "year")) |>
   left_join(renewables, by = c("entity", "year")) |>
-  left_join(demacracy, by = c("entity", "year"))
+  left_join(democracy, by = c("entity", "year"))
 
 # create table with missing values
 
